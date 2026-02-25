@@ -36,7 +36,12 @@ uv run main.py
 ```
 
 ### 5. Testing the Gateway
-Once the server is running at http://localhost:8080, you can verify it using the following methods:
+Start the server at 8080:
+```bash
+uv run uvicorn main:app --host 0.0.0.0 --port 8080
+```
+
+Once the server is at http://localhost:8080, you can verify it using the following methods:
 
 Method 1: Basic Echo Test (via cURL)
 Test if the gateway correctly extracts your message and echoes it back:
