@@ -7,7 +7,7 @@ from typing import List, Optional
 
 app = FastAPI()
 
-# 读取环境变量，设置默认值
+# Read environment variables and set default values
 PORT = int(os.getenv("PORT", 8080))
 BACKEND_URL = os.getenv("BACKEND_URL", None)
 
@@ -28,31 +28,31 @@ async def chat_completion(
     request: ChatRequest, 
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID")
 ):
-    # 1. 处理 Request ID
+    # 1. Handle Request ID: Use provided header or generate a new UUID
     req_id = x_request_id or str(uuid.uuid4())
     
-    # 2. 提取最后一条用户消息
+    # 2. Extract the last user message as the prompt
     user_prompt = ""
     for msg in reversed(request.messages):
         if msg.role == "user":
             user_prompt = msg.content
             break
 
-    # 3. 逻辑分发
+    # 3. Logic Dispatching
     if not BACKEND_URL:
-        # 情况 A: 返回 Echo
+        # Case A: Return Echo response if no backend is configured
         reply_content = f"Echo: {user_prompt}"
     else:
-        # 情况 B: 转发到后端
+        # Case B: Forward request to the backend
         try:
             resp = requests.post(BACKEND_URL, json=request.dict(), timeout=10)
-            # 这里简单起见直接取后端返回的 content，实际可根据需要调整
+            # Extract content from backend response (assuming OpenAI-compatible shape)
             backend_data = resp.json()
             reply_content = backend_data["choices"][0]["message"]["content"]
         except Exception as e:
             reply_content = f"Error calling backend: {str(e)}"
 
-    # 4. 构造统一响应
+    # 4. Construct standardized response
     return {
         "id": req_id,
         "choices": [{
