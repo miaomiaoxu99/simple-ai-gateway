@@ -60,7 +60,7 @@ async def chat_completion(
             "finish_reason": "stop"
         }],
         "usage": {
-            "prompt_tokens": len(user_prompt), # 简单模拟
+            "prompt_tokens": len(user_prompt), # Simple simulation of token count
             "completion_tokens": len(reply_content),
             "total_tokens": len(user_prompt) + len(reply_content)
         }
