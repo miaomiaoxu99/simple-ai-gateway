@@ -5,29 +5,40 @@ A lightweight AI API Gateway built with Python and **FastAPI**. It follows the O
 ## 🚀 Quick Start
 
 ### 1. Prerequisites
-Ensure you have Python 3.9+ installed. It is highly recommended to use a virtual environment:
+Ensure you have [uv](https://docs.astral.sh/uv/) installed. `uv` is an extremely fast Python package manager that replaces `pip` and `venv`.
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate  # Mac/Linux
-pip install -r requirements.txt
-
+# If you don't have uv yet (macOS)
+brew install uv
 ```
 
-### 2. Environment Setup (Optional)
-Create a .env file in the root directory.
+### 2. Installation & Environment Setup
+uv will automatically manage your virtual environment and dependencies based on pyproject.toml.
+```bash
+# Clone the repository
+git clone <your-repo-url>
+cd simple-ai-gateway
+
+# Sync dependencies and create a virtual environment automatically
+uv sync
+```
+
+### 3. Create a .env file in the root directory:
 ```bash
 PORT=8080
 BACKEND_URL=  # Leave empty to enable "Echo Mode"
 ```
 
-### 3. Run the Server
+### 4. Run the Server
 Start the server.
 ```bash
-python main.py
+uv run main.py
 ```
 
-### 4. Testing the Gateway
+### 5. Testing the Gateway
+Once the server is running at http://localhost:8080, you can verify it using the following methods:
+
+Method 1: Basic Echo Test (via cURL)
 Test if the gateway correctly extracts your message and echoes it back:
 ```bash
 curl -X POST http://localhost:8080/v1/chat/completions \
@@ -45,8 +56,8 @@ What to look for:
 *  The response should contain "content": "Echo: Hello, world!".
 *  The "id" field should match "my-custom-id-123".
 
-### 5. Auto-ID Generation Test
-If you don't provide an X-Request-ID header, the gateway will generate one for you:
+Method 2: Auto-ID Generation Test
+If you don't provide an X-Request-ID header, the gateway will generate a unique UUID for you:
 ```bash
 curl -X POST http://localhost:8080/v1/chat/completions \
 -H "Content-Type: application/json" \
@@ -56,6 +67,10 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 
 ```
 What to look for: A valid UUID in the "id" field (e.g., 550e8400-e29b-...).
+
+Method 3: Interactive API Docs
+FastAPI automatically generates a Swagger UI. You can test the API directly from your browser: http://localhost:8080/docs
+
 
 
 
