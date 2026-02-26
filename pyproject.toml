@@ -1,6 +1,6 @@
 [project]
 name = "simple-ai-gateway"
-version = "0.1.0"
+version = "0.0.1"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -9,5 +9,18 @@ dependencies = [
     "httpx>=0.28.1",
     "python-dotenv>=1.2.1",
     "requests>=2.32.5",
+    "slowapi>=0.1.9",
     "uvicorn>=0.41.0",
 ]
+
+[project.optional-dependencies]
+redis = [
+    "redis>=7.2.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+simple-ai-gateway = "simple_ai_gateway.main:main"
