@@ -17,7 +17,7 @@ uv will automatically manage your virtual environment and dependencies based on 
 ```bash
 # Clone the repository
 git clone <your-repo-url>
-cd simple-ai-gateway
+cd simple-ai-gateway/src/simple_ai_gateway
 
 # Sync dependencies and create a virtual environment automatically
 uv sync
@@ -73,11 +73,39 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 ```
 What to look for: A valid UUID in the "id" field (e.g., 550e8400-e29b-...).
 
-Method 3: Interactive API Docs
+Method 3: Streaming Test
+Test the Server-Sent Events (SSE) streaming functionality. Use the -N flag to disable buffering and see the "typewriter" effect:
+```bash
+curl -N -X POST http://localhost:8080/v1/chat/completions \
+-H "Content-Type: application/json" \
+-d '{
+  "stream": true,
+  "messages": [{"role": "user", "content": "This is a streaming test."}]
+}'
+```
+
+What to look for: The response should arrive in chunks (prefixes of data: {...}) rather than all at once.
+
+Method 4: Rate Limiting Test
+The gateway is configured to allow 5 requests per minute per IP. You can test this by running a quick loop:
+```bash
+for i in {1..6}; do 
+  curl -s -o /dev/null -w "Request $i: %{http_code}\n" -X POST http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "ping"}]}'; 
+done
+```
+What to look for: The first 5 requests should return 200, and the 6th request should return 429 (Too Many Requests).
+
+
+Method 5: Interactive API Docs
 FastAPI automatically generates a Swagger UI. You can test the API directly from your browser: http://localhost:8080/docs
 
 
-
+### 6. Features
+* Format Validation: Strict Pydantic models for OpenAI compatibility.
+* Streaming: Supports SSE-based streaming responses.
+* Rate Limiting: Built-in memory-based sliding window protection.
 
 
 

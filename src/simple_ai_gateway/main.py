@@ -2,18 +2,48 @@ import os
 import uuid
 import json
 import asyncio
+import time
 import requests
-from fastapi import FastAPI, Header, HTTPException
+from collections import defaultdict
+from fastapi import FastAPI, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 from typing import List, Optional, Literal, AsyncGenerator
 import uvicorn
+
 app = FastAPI()
 
 # Read environment variables and set default values
 PORT = int(os.getenv("PORT", 8080))
 BACKEND_URL = os.getenv("BACKEND_URL", None)
 
+# ========== Rate Limiting Configuration ==========
+# Using a dictionary to track request timestamps per IP
+# In production, use Redis for distributed rate limiting
+request_history = defaultdict(list)
+RATE_LIMIT_WINDOW = 60  # seconds
+MAX_REQUESTS = 5        # requests per window
+
+def check_rate_limit(client_ip: str):
+    """
+    In-memory sliding window rate limiter.
+    Removes timestamps older than the window and checks current count.
+    """
+    now = time.time()
+    # Remove timestamps older than 60 seconds
+    request_history[client_ip] = [
+        t for t in request_history[client_ip] 
+        if now - t < RATE_LIMIT_WINDOW
+    ]
+    
+    if len(request_history[client_ip]) >= MAX_REQUESTS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Please try again later."
+        )
+    
+    # Record the new request timestamp
+    request_history[client_ip].append(now)
 
 # ========== Models with Validation ==========
 
@@ -87,15 +117,20 @@ async def generate_stream(req_id: str, content: str) -> AsyncGenerator[str, None
 
 @app.post("/v1/chat/completions")
 async def chat_completion(
-    request: ChatRequest,
+    chat_req: ChatRequest,  # Renamed from 'request' to avoid conflict with FastAPI Request
+    http_req: Request,      # Added to capture client IP for rate limiting
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID")
 ):
-    # 1. Handle Request ID: Use provided header or generate a new UUID
+    # 1. Apply Rate Limiting
+    client_ip = http_req.client.host
+    check_rate_limit(client_ip)
+
+    # 2. Handle Request ID: Use provided header or generate a new UUID
     req_id = x_request_id or str(uuid.uuid4())
 
-    # 2. Extract the last user message as the prompt
+    # 3. Extract the last user message as the prompt
     user_prompt = ""
-    for msg in reversed(request.messages):
+    for msg in reversed(chat_req.messages):
         if msg.role == "user":
             user_prompt = msg.content
             break
@@ -103,22 +138,22 @@ async def chat_completion(
     if not user_prompt:
         raise HTTPException(status_code=400, detail="No user message found")
 
-    # 3. Logic Dispatching
+    # 4. Logic Dispatching
     if not BACKEND_URL:
         # Case A: Return Echo response if no backend is configured
         reply_content = f"Echo: {user_prompt}"
     else:
         # Case B: Forward request to the backend
         try:
-            resp = requests.post(BACKEND_URL, json=request.model_dump(), timeout=10)
-            # Extract content from backend response (assuming OpenAI-compatible shape)
+            # Note: For production, consider using httpx.AsyncClient for non-blocking I/O
+            resp = requests.post(BACKEND_URL, json=chat_req.model_dump(), timeout=10)
             backend_data = resp.json()
             reply_content = backend_data["choices"][0]["message"]["content"]
         except Exception as e:
             reply_content = f"Error calling backend: {str(e)}"
 
-    # 4. Return streaming or regular response
-    if request.stream:
+    # 5. Return streaming or regular response
+    if chat_req.stream:
         return StreamingResponse(
             generate_stream(req_id, reply_content),
             media_type="text/event-stream",
@@ -141,7 +176,5 @@ async def chat_completion(
         }
     }
 
-def main():                                                                                                                                                                                                                                             
-    uvicorn.run("simple_ai_gateway.main:app", host="0.0.0.0", port=PORT, reload=False)                                                                  
-    if __name__ == "__main__":                                                                                                            
-      main()
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
