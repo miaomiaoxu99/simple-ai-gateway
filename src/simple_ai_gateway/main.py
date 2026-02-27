@@ -1,15 +1,17 @@
-import os
-import uuid
-import json
 import asyncio
+import json
+import os
 import time
-import requests
+import uuid
 from collections import defaultdict
+from collections.abc import AsyncGenerator
+from typing import Literal
+
+import requests
+import uvicorn
 from fastapi import FastAPI, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
-from typing import List, Optional, Literal, AsyncGenerator
-import uvicorn
 
 app = FastAPI()
 
@@ -22,7 +24,8 @@ BACKEND_URL = os.getenv("BACKEND_URL", None)
 # In production, use Redis for distributed rate limiting
 request_history = defaultdict(list)
 RATE_LIMIT_WINDOW = 60  # seconds
-MAX_REQUESTS = 5        # requests per window
+MAX_REQUESTS = 5  # requests per window
+
 
 def check_rate_limit(client_ip: str):
     """
@@ -32,20 +35,21 @@ def check_rate_limit(client_ip: str):
     now = time.time()
     # Remove timestamps older than 60 seconds
     request_history[client_ip] = [
-        t for t in request_history[client_ip] 
-        if now - t < RATE_LIMIT_WINDOW
+        t for t in request_history[client_ip] if now - t < RATE_LIMIT_WINDOW
     ]
-    
+
     if len(request_history[client_ip]) >= MAX_REQUESTS:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many requests. Please try again later."
+            detail="Too many requests. Please try again later.",
         )
-    
+
     # Record the new request timestamp
     request_history[client_ip].append(now)
 
+
 # ========== Models with Validation ==========
+
 
 class Message(BaseModel):
     role: Literal["system", "user", "assistant"]
@@ -60,12 +64,12 @@ class Message(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    messages: List[Message]
+    messages: list[Message]
     stream: bool = False
 
     @field_validator("messages")
     @classmethod
-    def messages_not_empty(cls, v: List[Message]) -> List[Message]:
+    def messages_not_empty(cls, v: list[Message]) -> list[Message]:
         if not v:
             raise ValueError("messages list cannot be empty")
         return v
@@ -73,11 +77,12 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     id: str
-    choices: List[dict]
+    choices: list[dict]
     usage: dict
 
 
 # ========== Streaming Helper ==========
+
 
 async def generate_stream(req_id: str, content: str) -> AsyncGenerator[str, None]:
     """Generate SSE stream in OpenAI-compatible format."""
@@ -87,14 +92,17 @@ async def generate_stream(req_id: str, content: str) -> AsyncGenerator[str, None
         chunk = {
             "id": req_id,
             "object": "chat.completion.chunk",
-            "choices": [{
-                "index": 0,
-                "delta": {
-                    "role": "assistant",
-                    "content": word + " "
-                } if i == 0 else {"content": word + " "},
-                "finish_reason": None
-            }]
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": (
+                        {"role": "assistant", "content": word + " "}
+                        if i == 0
+                        else {"content": word + " "}
+                    ),
+                    "finish_reason": None,
+                }
+            ],
         }
         yield f"data: {json.dumps(chunk)}\n\n"
         await asyncio.sleep(0.05)  # Simulate token-by-token delay
@@ -103,11 +111,7 @@ async def generate_stream(req_id: str, content: str) -> AsyncGenerator[str, None
     final_chunk = {
         "id": req_id,
         "object": "chat.completion.chunk",
-        "choices": [{
-            "index": 0,
-            "delta": {},
-            "finish_reason": "stop"
-        }]
+        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
     }
     yield f"data: {json.dumps(final_chunk)}\n\n"
     yield "data: [DONE]\n\n"
@@ -115,11 +119,12 @@ async def generate_stream(req_id: str, content: str) -> AsyncGenerator[str, None
 
 # ========== Endpoint ==========
 
+
 @app.post("/v1/chat/completions")
 async def chat_completion(
-    chat_req: ChatRequest,  # Renamed from 'request' to avoid conflict with FastAPI Request
-    http_req: Request,      # Added to capture client IP for rate limiting
-    x_request_id: Optional[str] = Header(None, alias="X-Request-ID")
+    chat_req: ChatRequest,  # Avoid naming conflict with FastAPI Request
+    http_req: Request,      # For capturing client IP (rate limiting)
+    x_request_id: str | None = Header(None, alias="X-Request-ID"),
 ):
     # 1. Apply Rate Limiting
     client_ip = http_req.client.host
@@ -145,7 +150,8 @@ async def chat_completion(
     else:
         # Case B: Forward request to the backend
         try:
-            # Note: For production, consider using httpx.AsyncClient for non-blocking I/O
+            # For production, use httpx.AsyncClient for non-blocking I/O.
+            # Here, synchronous requests.post is sufficient.
             resp = requests.post(BACKEND_URL, json=chat_req.model_dump(), timeout=10)
             backend_data = resp.json()
             reply_content = backend_data["choices"][0]["message"]["content"]
@@ -160,21 +166,24 @@ async def chat_completion(
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
-            }
+            },
         )
 
     return {
         "id": req_id,
-        "choices": [{
-            "message": {"role": "assistant", "content": reply_content},
-            "finish_reason": "stop"
-        }],
+        "choices": [
+            {
+                "message": {"role": "assistant", "content": reply_content},
+                "finish_reason": "stop",
+            }
+        ],
         "usage": {
             "prompt_tokens": len(user_prompt),
             "completion_tokens": len(reply_content),
-            "total_tokens": len(user_prompt) + len(reply_content)
-        }
+            "total_tokens": len(user_prompt) + len(reply_content),
+        },
     }
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=PORT)
