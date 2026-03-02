@@ -23,10 +23,23 @@ cd simple-ai-gateway/src/simple_ai_gateway
 uv sync
 ```
 
-### 3. Create a .env file in the root directory:
-```bash
-PORT=8080
-BACKEND_URL=  # Leave empty to enable "Echo Mode"
+### 3. Configuration
+The gateway uses a config.yaml file for routing. Ensure this file exists in the same directory as main.py.
+
+Sample config.yaml:
+```YAML
+default_backend: local
+
+backends:
+  local:
+    type: local
+    url: http://127.0.0.1:8081
+  modal:
+    type: modal
+    url: https:/YOUR_MODAL_URL
+  modal_vllm:
+    type: vllm
+    url: https://YOUR_MODAL_VLLM_URL
 ```
 
 ### 4. Run the Server
@@ -101,9 +114,95 @@ What to look for: The first 5 requests should return 200, and the 6th request sh
 Method 5: Interactive API Docs
 FastAPI automatically generates a Swagger UI. You can test the API directly from your browser: http://localhost:8080/docs
 
+### 6. Routing Verification
 
-### 6. Features
-* Format Validation: Strict Pydantic models for OpenAI compatibility.
+Method 1: Local Route (Echo)
+Verify that specifying the local model triggers the local echo backend:
+
+```bash
+curl -s -X POST http://localhost:8080/v1/chat/completions \
+-H "Content-Type: application/json" \
+-d '{"model": "local", "messages": [{"role": "user", "content": "Hello local"}]}'
+```
+
+Expected Response:
+
+```JSON
+{
+  "id": "...",
+  "choices": [{"message": {"role": "assistant", "content": "Echo: Hello local"}, "finish_reason": "stop"}],
+  "usage": {"total_tokens": 17}
+}
+```
+
+Method 2: Remote Route - Non-Streaming
+Verify forwarding to a remote inference backend (e.g., TinyLlama on Modal).
+```bash
+curl -s -X POST http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"modal","stream":false,"messages":[{"role":"user","content":"What is the capital city in US"}]}'
+```
+
+Expected Response:
+Note: The content will vary depending on the specific model (e.g., TinyLlama) deployed on your backend.
+
+```JSON
+{
+  "id": "cffcf1de-30d6-4a1c-b06b-b56af8ef7d46",
+  "choices": [
+    {
+      "message": {
+        "role": "assistant",
+        "content": " Yes, the capital city of the United States is Washington D.C."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 0,
+    "completion_tokens": 62,
+    "total_tokens": 62
+  }
+}
+```
+
+Method 3: Remote Route - Streaming
+Verify the gateway's ability to handle Server-Sent Events (SSE). Use the `-N` flag to disable buffering and observe the real-time token generation.
+
+```bash
+curl -s -X POST http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"modal","stream":true,"messages":[{"role":"user","content":"What is the capital city in US"}]}'
+```
+
+Example Response (Chunks):
+```Plaintext
+data: {"id": "170a33e4-db0d-4803-983e-09dcccc048cd", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"role": "assistant", "content": "Boston, "}, "finish_reason": null}]}
+data: {"id": "170a33e4-db0d-4803-983e-09dcccc048cd", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "Massachusetts "}, "finish_reason": null}]}
+...
+data: {"id": "170a33e4-db0d-4803-983e-09dcccc048cd", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "The "}, "finish_reason": null}]}
+data: {"id": "170a33e4-db0d-4803-983e-09dcccc048cd", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "Star "}, "finish_reason": null}]}
+data: {"id": "170a33e4-db0d-4803-983e-09dcccc048cd", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "Spangled "}, "finish_reason": null}]}
+data: {"id": "170a33e4-db0d-4803-983e-09dcccc048cd", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "Banner "}, "finish_reason": null}]}
+data: {"id": "170a33e4-db0d-4803-983e-09dcccc048cd", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+data: [DONE]
+```
+
+Method 4: Fallback Logic (Missing Model)
+Verify that an unknown model correctly falls back to the default_backend (local):
+
+```bash
+curl -s -X POST http://localhost:8080/v1/chat/completions \
+-H "Content-Type: application/json" \
+-d '{"model": "unknown-model", "messages": [{"role": "user", "content": "Where am I?"}]}'
+```
+Expect: Response content prefixed with `Echo:`  if `default_backend` is set to `local`.
+
+
+### 7. Features
+* Interface Driven: Clean `generate()` contract for all backend.
+* Dynamic Routing: Route requests based on the `model` field in the payload.
+* Config-Driven: Add or update backends in `config.yaml` with zero code changes.
 * Streaming: Supports SSE-based streaming responses.
 * Rate Limiting: Built-in memory-based sliding window protection.
 
