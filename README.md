@@ -56,7 +56,7 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8080
 
 Once the server is at http://localhost:8080, you can verify it using the following methods:
 
-Method 1: Basic Echo Test (via cURL)
+#### Method 1: Basic Echo Test (via cURL)
 Test if the gateway correctly extracts your message and echoes it back:
 ```bash
 curl -X POST http://localhost:8080/v1/chat/completions \
@@ -74,7 +74,7 @@ What to look for:
 *  The response should contain "content": "Echo: Hello, world!".
 *  The "id" field should match "my-custom-id-123".
 
-Method 2: Auto-ID Generation Test
+#### Method 2: Auto-ID Generation Test
 If you don't provide an X-Request-ID header, the gateway will generate a unique UUID for you:
 ```bash
 curl -X POST http://localhost:8080/v1/chat/completions \
@@ -86,7 +86,7 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 ```
 What to look for: A valid UUID in the "id" field (e.g., 550e8400-e29b-...).
 
-Method 3: Streaming Test
+#### Method 3: Streaming Test
 Test the Server-Sent Events (SSE) streaming functionality. Use the -N flag to disable buffering and see the "typewriter" effect:
 ```bash
 curl -N -X POST http://localhost:8080/v1/chat/completions \
@@ -99,7 +99,7 @@ curl -N -X POST http://localhost:8080/v1/chat/completions \
 
 What to look for: The response should arrive in chunks (prefixes of data: {...}) rather than all at once.
 
-Method 4: Rate Limiting Test
+#### Method 4: Rate Limiting Test
 The gateway is configured to allow 5 requests per minute per IP. You can test this by running a quick loop:
 ```bash
 for i in {1..6}; do 
@@ -111,12 +111,12 @@ done
 What to look for: The first 5 requests should return 200, and the 6th request should return 429 (Too Many Requests).
 
 
-Method 5: Interactive API Docs
+#### Method 5: Interactive API Docs
 FastAPI automatically generates a Swagger UI. You can test the API directly from your browser: http://localhost:8080/docs
 
 ### 6. Routing Verification
 
-Method 1: Local Route (Echo)
+#### Method 1: Local Route (Echo)
 Verify that specifying the local model triggers the local echo backend:
 
 ```bash
@@ -135,7 +135,7 @@ Expected Response:
 }
 ```
 
-Method 2: Remote Route - Non-Streaming
+#### Method 2: Remote Route - Non-Streaming
 Verify forwarding to a remote inference backend (e.g., TinyLlama on Modal).
 ```bash
 curl -s -X POST http://localhost:8080/v1/chat/completions \
@@ -166,7 +166,7 @@ Note: The content will vary depending on the specific model (e.g., TinyLlama) de
 }
 ```
 
-Method 3: Remote Route - Streaming
+#### Method 3: Remote Route - Streaming
 Verify the gateway's ability to handle Server-Sent Events (SSE). Use the `-N` flag to disable buffering and observe the real-time token generation.
 
 ```bash
@@ -188,7 +188,7 @@ data: {"id": "170a33e4-db0d-4803-983e-09dcccc048cd", "object": "chat.completion.
 data: [DONE]
 ```
 
-Method 4: Fallback Logic (Missing Model)
+#### Method 4: Fallback Logic (Missing Model)
 Verify that an unknown model correctly falls back to the default_backend (local):
 
 ```bash
