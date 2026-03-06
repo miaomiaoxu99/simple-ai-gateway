@@ -1,5 +1,7 @@
 default_backend: local
-
+rate_limiter:                                                                                                                                     
+    storage: redis  # "memory" or "redis"                                                                                                          
+    redis_url: redis://localhost:6379  # only used if storage is "redis"    
 backends:
   local:
     type: local

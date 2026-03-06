@@ -6,6 +6,9 @@ import uuid
 from pathlib import Path
 import yaml
 import httpx
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from collections.abc import AsyncGenerator
@@ -17,7 +20,31 @@ from fastapi import FastAPI, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 
-app = FastAPI()
+def get_limiter(config):                                                                                                                          
+      rl_config = config.get("rate_limiter", {})                                                                                                    
+      storage_type = rl_config.get("storage", "memory")                                                                                             
+                                                                                                                                                    
+      if storage_type == "redis":                                                                                                                   
+          try:                                                                                                                                      
+              import redis                                                                                                                          
+          except ImportError:                                                                                                                       
+              raise RuntimeError(                                                                                                                   
+                  "Redis storage configured but 'redis' package not installed. "                                                                    
+                  "Install with: uv pip install -e '.[redis]'"                                                                                      
+              )                                                                                                                                     
+                                                                                                                                                    
+          redis_url = rl_config.get("redis_url", "redis://localhost:6379")                                                                          
+          try:                                                                                                                                      
+              r = redis.from_url(redis_url)                                                                                                         
+              r.ping()                                                                                                                              
+          except redis.ConnectionError as e:                                                                                                        
+              raise RuntimeError(f"Cannot connect to Redis at {redis_url}: {e}")                                                                    
+                                                                                                                                                    
+          print(f"Rate limiter using Redis: {redis_url}")                                                                                           
+          return Limiter(key_func=get_remote_address, storage_uri=redis_url)                                                                        
+                                                                                                                                                    
+      print("Rate limiter using in-memory storage")                                                                                                 
+      return Limiter(key_func=get_remote_address) 
 
 # Backend Configuration Logic.
 def load_config():
@@ -33,6 +60,10 @@ def load_config():
 
 CONFIG = load_config()
 
+limiter = get_limiter(CONFIG)
+app = FastAPI()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Read environment variables and set default values
 PORT = int(os.getenv("PORT", 8080))
 
@@ -121,15 +152,16 @@ async def track_queue_time(request: Request, call_next):
     return response
 
 @app.post("/v1/chat/completions")
+@limiter.limit("5/minute")
 async def chat_completion(
     chat_req: ChatRequest,
-    http_req: Request,
+    request: Request,
     x_request_id: str | None = Header(None, alias="X-Request-ID"),
 ):  
-    queue_time = time.perf_counter() - http_req.state.arrival_time
+    queue_time = time.perf_counter() - request.state.arrival_time
     # 1. Apply Rate Limiting
     execution_start = time.perf_counter()
-    check_rate_limit(http_req.client.host)
+    # check_rate_limit(request.client.host)
 
     # 2. Handle Request ID
     req_id = x_request_id or str(uuid.uuid4())
