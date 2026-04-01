@@ -9,6 +9,7 @@ import httpx
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from prometheus_fastapi_instrumentator import Instrumentator
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from collections.abc import AsyncGenerator
@@ -62,6 +63,7 @@ CONFIG = load_config()
 
 limiter = get_limiter(CONFIG)
 app = FastAPI()
+Instrumentator().instrument(app).expose(app)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Read environment variables and set default values
@@ -152,7 +154,6 @@ async def track_queue_time(request: Request, call_next):
     return response
 
 @app.post("/v1/chat/completions")
-@limiter.limit("5/minute")
 async def chat_completion(
     chat_req: ChatRequest,
     request: Request,
