@@ -11,4 +11,5 @@ backends:
     url: https://vivianxu1999--relay-llama-server-web.modal.run
   modal_vllm:
     type: vllm
-    url: https://YOUR_MODAL_VLLM_URL
+    url: https://vinayharshadpandya27--tinyllama-vllm-vllmserver-serve.modal.run
+    model_name: tinyllama
